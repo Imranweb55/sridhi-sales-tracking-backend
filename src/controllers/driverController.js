@@ -2,6 +2,11 @@
 const jwt      = require("jsonwebtoken");
 const User     = require("../models/User");
 const Delivery = require("../models/Delivery");
+// NEW (additive): powers the "Customers" tab (feature 2). Only used inside
+// createDelivery below (an admin-only endpoint) — the mobile app's own
+// endpoints (driverLogin, getMe, getTodayDeliveries, completeDelivery,
+// skipDelivery) are untouched.
+const { upsertFromDelivery } = require("./customerController");
 
 const signToken = (id) =>
   jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRE || "90d" });
@@ -92,38 +97,23 @@ exports.getAllDrivers = async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }); }
 };
 
-// ── CREATE DRIVER (POST /api/driver/admin/drivers) ──────────
-// Admin creates driver account directly from dashboard.
-// No separate registration needed for drivers.
 exports.createDriver = async (req, res) => {
   try {
     const { name, mobile, password } = req.body;
     if (!name || !mobile || !password)
-      return res.status(400).json({ message: "Name, mobile and password are required." });
+      return res.status(400).json({ message: "Name, mobile and password required." });
     if (password.length < 6)
       return res.status(400).json({ message: "Password must be at least 6 characters." });
     const exists = await User.findOne({ mobile });
-    if (exists)
-      return res.status(400).json({ message: "Mobile number already registered." });
-
-    // Auto-generate employeeId for driver
+    if (exists) return res.status(400).json({ message: "Mobile number already registered." });
     const count  = await User.countDocuments({ role: "driver" });
     const empId  = `DRV${String(count + 1).padStart(3, "0")}`;
-
-    const driver = await User.create({
-      name:       name.trim(),
-      mobile:     mobile.trim(),
-      password,
-      role:       "driver",
-      employeeId: empId,
-    });
-
-    const safe = await User.findById(driver._id).select("-password");
+    const driver = await User.create({ name: name.trim(), mobile: mobile.trim(), password, role: "driver", employeeId: empId });
+    const safe   = await User.findById(driver._id).select("-password");
     res.status(201).json({ driver: safe });
   } catch (err) { res.status(500).json({ message: err.message }); }
 };
 
-// ── DELETE DRIVER (DELETE /api/driver/admin/drivers/:id) ────
 exports.deleteDriver = async (req, res) => {
   try {
     await User.findByIdAndDelete(req.params.id);
@@ -155,12 +145,52 @@ exports.getDriverDeliveries = async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }); }
 };
 
+// ── SEARCH SHOPS FROM HISTORY ───────────────────────────────
+// GET /api/driver/admin/shops?q=anna
+// Returns distinct shops from past deliveries.
+// First time: new shop → manual entry + map pin.
+// Next time: type name → this returns the saved shop → click → all fields auto-filled.
+exports.searchShops = async (req, res) => {
+  try {
+    const q     = req.query.q || "";
+    const match = q.trim() ? { shopName: new RegExp(q.trim(), "i") } : {};
+    const shops = await Delivery.aggregate([
+      { $match: match },
+      { $sort:  { createdAt: -1 } },
+      { $group: {
+          _id:         "$shopName",
+          shopName:    { $first: "$shopName" },
+          ownerName:   { $first: "$ownerName" },
+          phone:       { $first: "$phone" },
+          address:     { $first: "$address" },
+          latitude:    { $first: "$latitude" },
+          longitude:   { $first: "$longitude" },
+          productName: { $first: "$productName" },
+          totalAmount: { $first: "$totalAmount" },
+          lastDelivery:{ $first: "$createdAt" },
+        }
+      },
+      { $sort:  { lastDelivery: -1 } },
+      { $limit: 8 },
+    ]);
+    res.json({ shops });
+  } catch (err) { res.status(500).json({ message: err.message }); }
+};
+
 exports.createDelivery = async (req, res) => {
   try {
     const delivery = await Delivery.create({
       ...req.body,
       deliveryDate: req.body.deliveryDate ? new Date(req.body.deliveryDate) : new Date(),
     });
+    // NEW (additive, feature 2): auto-add/update this shop's phone number in
+    // the Customers directory. If the phone already exists there, this just
+    // updates the running kg/order totals — it never creates a duplicate
+    // customer row. Wrapped so a Customer-tracking issue can never break the
+    // delivery response (same status code / same JSON shape as before).
+    upsertFromDelivery(delivery).catch((err) =>
+      console.error("Customer directory update failed:", err.message)
+    );
     res.status(201).json({ delivery });
   } catch (err) { res.status(400).json({ message: err.message }); }
 };

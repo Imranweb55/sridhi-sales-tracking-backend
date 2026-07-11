@@ -12,6 +12,7 @@ router.get("/deliveries/today",            protect, ctrl.getTodayDeliveries);
 router.put("/deliveries/:id/complete",     protect, ctrl.completeDelivery);
 router.put("/deliveries/:id/skip",         protect, ctrl.skipDelivery);
 // Admin management
+router.get("/admin/shops",                 protectAdmin, ctrl.searchShops);
 router.get("/admin/drivers",                protectAdmin, ctrl.getAllDrivers);
 router.post("/admin/drivers",               protectAdmin, ctrl.createDriver);
 router.delete("/admin/drivers/:id",         protectAdmin, ctrl.deleteDriver);

@@ -3,6 +3,14 @@ const router  = express.Router();
 const adminController = require("../controllers/adminController");
 const { protectAdmin } = require("../middleware/auth");
 
+// ── NEW (additive) ──
+// Feature 1: Drivers List (backup driver leads)
+// Feature 2: Customers directory
+// Feature 3: Sales Reports (pie chart + PDF data)
+const driverLeadController = require("../controllers/driverLeadController");
+const customerController   = require("../controllers/customerController");
+const reportController     = require("../controllers/reportController");
+
 router.post("/auth/login",  adminController.adminLogin);
 router.get( "/auth/me",     protectAdmin, adminController.getAdminMe);
 router.get("/seed",        adminController.seedAdmin);
@@ -27,5 +35,26 @@ router.get("/telecallers",            protectAdmin, adminController.getTelecalle
 router.post("/telecallers",           protectAdmin, adminController.createTelecaller);
 router.put("/telecallers/:id",        protectAdmin, adminController.updateTelecaller);
 router.delete("/telecallers/:id",     protectAdmin, adminController.deleteTelecaller);
+
+// ════════════════════════════════════════════════════════════
+// NEW ROUTES BELOW — nothing above this line was changed
+// ════════════════════════════════════════════════════════════
+
+// ── Feature 1: Drivers List (backup driver leads) ──
+router.get("/driver-leads",          protectAdmin, driverLeadController.getAll);
+router.post("/driver-leads",         protectAdmin, driverLeadController.create);
+router.get("/driver-leads/:id",      protectAdmin, driverLeadController.getOne);
+router.put("/driver-leads/:id",      protectAdmin, driverLeadController.update);
+router.delete("/driver-leads/:id",   protectAdmin, driverLeadController.remove);
+
+// ── Feature 2: Customers directory ──
+router.get("/customers",             protectAdmin, customerController.getCustomers);
+router.get("/customers/:id",         protectAdmin, customerController.getCustomerById);
+router.put("/customers/:id/tag",     protectAdmin, customerController.updateCustomerTag);
+router.delete("/customers/:id",      protectAdmin, customerController.deleteCustomer);
+
+// ── Feature 3: Sales Reports (kg trend + pie chart data) ──
+router.get("/sales-reports/daily",   protectAdmin, reportController.getDailyReport);
+router.get("/sales-reports/monthly", protectAdmin, reportController.getMonthlyReport);
 
 module.exports = router;

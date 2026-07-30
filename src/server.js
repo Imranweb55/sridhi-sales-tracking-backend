@@ -18,9 +18,18 @@ const app = express();
 // ADMIN_URL exactly as before.
 const PRIVATE_LAN_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3})(:\d+)?$/;
 
+// FIX: your Admin Dashboard is hosted on Vercel (e.g. https://field-sales-admin-dashboard.vercel.app
+// or a Vercel preview URL like https://field-sales-admin-dashboard-git-main-xxxx.vercel.app).
+// That origin was never in the allow-list, so cors() rejected it and the
+// error fell through to the error handler below as a 500. This regex
+// allows any *.vercel.app subdomain so it keeps working across every
+// Vercel deployment/preview, not just one hardcoded URL.
+const VERCEL_ORIGIN = /^https:\/\/[a-z0-9-]+\.vercel\.app$/;
+
 app.use(cors({
   origin: (origin, callback) => {
-    // No Origin header = same-origin request, curl, Postman, etc. — allow it
+    // No Origin header = same-origin request, curl, Postman, mobile app
+    // (React Native / Expo does NOT send an Origin header) — always allow.
     if (!origin) return callback(null, true);
 
     const explicitlyAllowed = [
@@ -34,7 +43,11 @@ app.use(cors({
       "http://localhost:3000",
     ];
 
-    if (explicitlyAllowed.includes(origin) || PRIVATE_LAN_ORIGIN.test(origin)) {
+    if (
+      explicitlyAllowed.includes(origin) ||
+      PRIVATE_LAN_ORIGIN.test(origin) ||
+      VERCEL_ORIGIN.test(origin)
+    ) {
       return callback(null, true);
     }
 

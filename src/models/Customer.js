@@ -14,6 +14,11 @@ const CustomerSchema = new mongoose.Schema({
   phone:           { type: String, required: true, trim: true, unique: true, index: true },
   address:         { type: String, trim: true },
 
+  // NEW: optional GSTIN, used when generating a "With GST" invoice for
+  // this customer. Left blank for customers who haven't provided one —
+  // invoiceService falls back gracefully when this is empty.
+  gstin:           { type: String, trim: true, default: "" },
+
   // Manually set by admin on the Customer detail page. Defaults to
   // "irregular" for every newly-discovered customer. The daily / monthly
   // "kg sold per day" figure on the Customers tab and Sales Reports tab

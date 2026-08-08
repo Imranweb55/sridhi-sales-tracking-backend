@@ -20,6 +20,7 @@ router.put("/deliveries/:id/unporter",      protect, ctrl.moveToDelivery);
 router.get("/admin/shops",                  protectAdmin, ctrl.searchShops);
 router.get("/admin/drivers",                protectAdmin, ctrl.getAllDrivers);
 router.post("/admin/drivers",               protectAdmin, ctrl.createDriver);
+router.put("/admin/drivers/:id/route",       protectAdmin, ctrl.updateDriverRoute);
 router.delete("/admin/drivers/:id",         protectAdmin, ctrl.deleteDriver);
 router.get("/admin/drivers/:id/deliveries", protectAdmin, ctrl.getDriverDeliveries);
 router.get("/admin/deliveries",             protectAdmin, ctrl.getAllDeliveries);

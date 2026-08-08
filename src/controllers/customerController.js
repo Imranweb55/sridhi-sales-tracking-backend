@@ -26,11 +26,13 @@ exports.upsertFromDelivery = async (delivery) => {
     existing.totalAmount += Number(delivery.totalAmount) || 0;
     existing.lastDeliveryDate = delivery.deliveryDate || new Date();
     existing.lastDriver   = delivery.driver;
-    // Keep the shop/owner/address fresh in case it changed slightly,
+    // Keep the shop/owner/address/GPS fresh in case it changed slightly,
     // without touching the tag the admin may have already set.
     if (delivery.shopName)  existing.shopName  = delivery.shopName;
     if (delivery.ownerName) existing.ownerName = delivery.ownerName;
     if (delivery.address)   existing.address   = delivery.address;
+    if (delivery.latitude != null)  existing.latitude  = delivery.latitude;
+    if (delivery.longitude != null) existing.longitude = delivery.longitude;
     await existing.save();
     return existing;
   }
@@ -40,6 +42,8 @@ exports.upsertFromDelivery = async (delivery) => {
     ownerName:  delivery.ownerName,
     phone,
     address:    delivery.address,
+    latitude:   delivery.latitude,
+    longitude:  delivery.longitude,
     tag:        "irregular",
     totalKg:      Number(delivery.quantity) || 0,
     totalOrders:  1,
@@ -51,11 +55,63 @@ exports.upsertFromDelivery = async (delivery) => {
 };
 
 // GET /api/admin/customers
-// Returns the full customer list plus the headline stats used at the
-// top of the Customers tab: total client count and today's kg sold,
-// where the kg figure only counts customers tagged "regular".
+// GET /api/admin/customers?q=Sri&limit=8   (NEW — search mode)
+//
+// Default (no ?q): unchanged — returns the full customer list plus the
+// headline stats used at the top of the Customers tab.
+//
+// Search mode (?q= present): used by the "Assign Delivery" customer
+// autocomplete (server-side search, so the whole customer table never has
+// to be downloaded to the browser — see Feature 18). Filters by shop name,
+// owner name, or phone (case-insensitive), skips the stats calculation
+// for speed, and caps results (default 8) since it's for a dropdown, not
+// a full listing page.
+//
+// GPS self-heal: customers created before the latitude/longitude field
+// existed on the Customer model never got backfilled unless the one-time
+// script was run. Rather than depend on that, every search result missing
+// GPS is topped up live from that phone's most recent Delivery record
+// (which already has real GPS — confirmed against the deliveries
+// collection) and saved back onto the Customer so it's instant next time.
+async function fillMissingGps(customers) {
+  return Promise.all(customers.map(async (c) => {
+    if (c.latitude != null && c.longitude != null) return c;
+    const lastGpsDelivery = await Delivery.findOne({
+      phone: c.phone,
+      latitude: { $ne: null },
+      longitude: { $ne: null },
+    }).sort({ deliveryDate: -1, createdAt: -1 });
+    if (!lastGpsDelivery) return c;
+    c.latitude = lastGpsDelivery.latitude;
+    c.longitude = lastGpsDelivery.longitude;
+    c.save().catch(() => {}); // persist for next time — fire and forget, doesn't block this response
+    return c;
+  }));
+}
+
 exports.getCustomers = async (req, res) => {
   try {
+    const { q, limit } = req.query;
+
+    if (q !== undefined) {
+      const query = String(q).trim();
+      const cap = Math.min(Number(limit) || 8, 20);
+      const filter = query
+        ? {
+            $or: [
+              { shopName:  new RegExp(query, "i") },
+              { ownerName: new RegExp(query, "i") },
+              { phone:     new RegExp(query, "i") },
+            ],
+          }
+        : {};
+      let customers = await Customer.find(filter)
+        .sort({ lastDeliveryDate: -1 })
+        .limit(cap);
+      customers = await fillMissingGps(customers);
+      return res.json({ customers, stats: null });
+    }
+
     const customers = await Customer.find().sort({ lastDeliveryDate: -1 });
 
     const regularCustomers = customers.filter(c => c.tag === "regular");

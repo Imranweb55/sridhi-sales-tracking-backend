@@ -5,6 +5,54 @@ const jwt      = require("jsonwebtoken");
 const User     = require("../models/User");
 const Delivery = require("../models/Delivery");
 
+const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+
+// Server-side price/GST recalculation — never trusts numbers sent from the
+// browser. Re-derives subtotal/GST/totalAmount from quantity + pricePerKg
+// every time, so a tampered or stale frontend calculation can never be saved.
+//
+// IMPORTANT: `totalAmount` (the pre-existing field used everywhere else in
+// the app — customer running totals, sales reports, payment collection,
+// and the invoice line-item amount) is always the PRE-GST subtotal. GST for
+// an actual invoice document is applied separately, at download time, by
+// the existing invoiceService (With GST / Without GST buttons). Storing a
+// GST-inclusive number here would silently double-charge GST on invoices.
+// gstEnabled/gstPercentage/gstAmount are saved purely as a record of what
+// the admin previewed on the Assign Delivery screen.
+function computeDeliveryPricing(body, existing = {}) {
+  const quantity = body.quantity !== undefined ? Number(body.quantity) : Number(existing.quantity);
+  if (!quantity || quantity <= 0) {
+    const err = new Error("Quantity must be greater than 0.");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  let pricePerKg = body.pricePerKg !== undefined ? Number(body.pricePerKg) : existing.pricePerKg;
+  // Backward compatibility: older callers (or the mobile app) may still
+  // send a plain totalAmount with no pricePerKg — derive one so the field
+  // is always populated, without forcing every caller to change.
+  if ((pricePerKg === undefined || pricePerKg === null || isNaN(pricePerKg)) && body.totalAmount !== undefined) {
+    pricePerKg = quantity > 0 ? round2(Number(body.totalAmount) / quantity) : 0;
+  }
+  pricePerKg = round2(pricePerKg || 0);
+  if (pricePerKg < 0) {
+    const err = new Error("Price per KG cannot be negative.");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const gstEnabled = body.gstEnabled !== undefined ? Boolean(body.gstEnabled) : Boolean(existing.gstEnabled);
+  const gstPercentage = gstEnabled ? 5 : 0;
+
+  const subtotal = round2(quantity * pricePerKg);
+  const gstAmount = round2((subtotal * gstPercentage) / 100);
+
+  return {
+    quantity, pricePerKg, subtotal, gstEnabled, gstPercentage, gstAmount,
+    totalAmount: subtotal, // pre-GST, matches existing field semantics app-wide
+  };
+}
+
 const signToken = (id) =>
   jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRE || "90d" });
 
@@ -149,6 +197,22 @@ exports.deleteDriver = async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }); }
 };
 
+// NEW — sets the route/area label for a driver (e.g. "Ambattur Route").
+// Used only to group/label sections on the Daily Order Sheet PDF; doesn't
+// touch delivery assignment, auth, or anything else.
+exports.updateDriverRoute = async (req, res) => {
+  try {
+    const { route } = req.body;
+    const driver = await User.findByIdAndUpdate(
+      req.params.id,
+      { route: (route || "").trim() },
+      { new: true }
+    ).select("-password");
+    if (!driver) return res.status(404).json({ message: "Driver not found" });
+    res.json({ driver });
+  } catch (err) { res.status(500).json({ message: err.message }); }
+};
+
 exports.getAllDeliveries = async (req, res) => {
   try {
     const { date, section } = req.query;
@@ -194,17 +258,32 @@ exports.searchShops = async (req, res) => {
 
 exports.createDelivery = async (req, res) => {
   try {
-    const delivery = await Delivery.create({ ...req.body, deliveryDate: req.body.deliveryDate ? new Date(req.body.deliveryDate) : new Date() });
+    const pricing = computeDeliveryPricing(req.body);
+    const delivery = await Delivery.create({
+      ...req.body,
+      ...pricing, // server-recomputed quantity/pricePerKg/subtotal/gst*/totalAmount always win
+      deliveryDate: req.body.deliveryDate ? new Date(req.body.deliveryDate) : new Date(),
+    });
     res.status(201).json({ delivery });
-  } catch (err) { res.status(400).json({ message: err.message }); }
+  } catch (err) {
+    res.status(err.statusCode || 400).json({ message: err.message });
+  }
 };
 
 exports.updateDelivery = async (req, res) => {
   try {
-    const delivery = await Delivery.findByIdAndUpdate(req.params.id, req.body, { new: true });
-    if (!delivery) return res.status(404).json({ message: "Not found" });
+    const existing = await Delivery.findById(req.params.id);
+    if (!existing) return res.status(404).json({ message: "Not found" });
+    const pricing = computeDeliveryPricing(req.body, existing);
+    const delivery = await Delivery.findByIdAndUpdate(
+      req.params.id,
+      { ...req.body, ...pricing },
+      { new: true }
+    );
     res.json({ delivery });
-  } catch (err) { res.status(500).json({ message: err.message }); }
+  } catch (err) {
+    res.status(err.statusCode || 500).json({ message: err.message });
+  }
 };
 
 exports.deleteDelivery = async (req, res) => {

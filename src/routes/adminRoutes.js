@@ -10,6 +10,7 @@ const { protectAdmin } = require("../middleware/auth");
 const driverLeadController = require("../controllers/driverLeadController");
 const customerController   = require("../controllers/customerController");
 const reportController     = require("../controllers/reportController");
+const dailyOrderSheetController = require("../controllers/dailyOrderSheetController");
 
 router.post("/auth/login",  adminController.adminLogin);
 router.get( "/auth/me",     protectAdmin, adminController.getAdminMe);
@@ -56,5 +57,8 @@ router.delete("/customers/:id",      protectAdmin, customerController.deleteCust
 // ── Feature 3: Sales Reports (kg trend + pie chart data) ──
 router.get("/sales-reports/daily",   protectAdmin, reportController.getDailyReport);
 router.get("/sales-reports/monthly", protectAdmin, reportController.getMonthlyReport);
+
+// ── Feature 4: Daily Order Sheet (printable calling sheet) ──
+router.get("/daily-order-sheet",     protectAdmin, dailyOrderSheetController.downloadDailyOrderSheet);
 
 module.exports = router;

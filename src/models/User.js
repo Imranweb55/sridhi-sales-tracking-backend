@@ -31,6 +31,13 @@ const UserSchema = new mongoose.Schema({
   // Role: "employee" for field staff, "admin" for managers
   role:       { type: String, enum: ["employee","driver","admin"], default: "employee" },
 
+  // NEW — minimal field required for the Daily Order Sheet feature.
+  // The route/area name this driver currently covers (e.g. "Ambattur
+  // Route"), set by the admin from the Deliveries page. Used purely to
+  // label the route-wise sections of the Daily Order Sheet PDF — nothing
+  // else in the app depends on it, so it's safe to leave blank.
+  route:      { type: String, trim: true, default: "" },
+
   // Target set by admin
   dailyTarget:      { type: Number, default: 20   },
   weeklyTarget:     { type: Number, default: 100  },

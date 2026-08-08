@@ -14,6 +14,16 @@ const CustomerSchema = new mongoose.Schema({
   phone:           { type: String, required: true, trim: true, unique: true, index: true },
   address:         { type: String, trim: true },
 
+  // NEW — exact delivery GPS, kept in sync from Delivery records (see
+  // customerController.upsertFromDelivery / fillMissingGps). THIS FIELD
+  // WAS MISSING FROM THE SCHEMA — without it, Mongoose silently drops
+  // latitude/longitude on every save AND strips it from every API
+  // response, even though the controller code was setting it correctly.
+  // This is what lets "Assign Delivery" autofill exact GPS on customer
+  // select instead of always showing "Not set".
+  latitude:        { type: Number },
+  longitude:       { type: Number },
+
   // NEW: optional GSTIN, used when generating a "With GST" invoice for
   // this customer. Left blank for customers who haven't provided one —
   // invoiceService falls back gracefully when this is empty.

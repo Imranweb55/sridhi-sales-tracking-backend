@@ -11,6 +11,7 @@ const driverLeadController = require("../controllers/driverLeadController");
 const customerController   = require("../controllers/customerController");
 const reportController     = require("../controllers/reportController");
 const dailyOrderSheetController = require("../controllers/dailyOrderSheetController");
+const dailyInvoiceController = require("../controllers/dailyInvoiceController");
 
 router.post("/auth/login",  adminController.adminLogin);
 router.get( "/auth/me",     protectAdmin, adminController.getAdminMe);
@@ -52,6 +53,7 @@ router.delete("/driver-leads/:id",   protectAdmin, driverLeadController.remove);
 router.get("/customers",             protectAdmin, customerController.getCustomers);
 router.get("/customers/:id",         protectAdmin, customerController.getCustomerById);
 router.put("/customers/:id/tag",     protectAdmin, customerController.updateCustomerTag);
+router.put("/customers/:id/whatsapp",protectAdmin, customerController.updateWhatsappGroup);
 router.delete("/customers/:id",      protectAdmin, customerController.deleteCustomer);
 
 // ── Feature 3: Sales Reports (kg trend + pie chart data) ──
@@ -60,5 +62,10 @@ router.get("/sales-reports/monthly", protectAdmin, reportController.getMonthlyRe
 
 // ── Feature 4: Daily Order Sheet (printable calling sheet) ──
 router.get("/daily-order-sheet",     protectAdmin, dailyOrderSheetController.downloadDailyOrderSheet);
+
+// ── Feature 5: Daily Invoice generation (Customer -> WhatsApp Group -> Today's Invoice -> PDF) ──
+router.get("/invoices/daily",              protectAdmin, dailyInvoiceController.getDailyStatus);
+router.post("/invoices/daily/generate",    protectAdmin, dailyInvoiceController.generateDaily);
+router.get("/invoices/daily/:id/download", protectAdmin, dailyInvoiceController.downloadDailyInvoice);
 
 module.exports = router;

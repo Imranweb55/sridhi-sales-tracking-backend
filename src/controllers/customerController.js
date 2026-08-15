@@ -166,6 +166,23 @@ exports.updateCustomerTag = async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }); }
 };
 
+// PUT /api/admin/customers/:id/whatsapp   { whatsappGroupName: "ABC Hotel Orders" }
+// NEW — Daily Invoice feature. Admin manually copies the exact WhatsApp
+// group name here; the future WhatsApp automation reads it straight back
+// from this Customer record (see Daily Invoice status API).
+exports.updateWhatsappGroup = async (req, res) => {
+  try {
+    const { whatsappGroupName } = req.body;
+    const customer = await Customer.findByIdAndUpdate(
+      req.params.id,
+      { whatsappGroupName: (whatsappGroupName || "").trim() },
+      { new: true }
+    );
+    if (!customer) return res.status(404).json({ message: "Customer not found" });
+    res.json({ customer });
+  } catch (err) { res.status(500).json({ message: err.message }); }
+};
+
 // DELETE /api/admin/customers/:id
 exports.deleteCustomer = async (req, res) => {
   try {

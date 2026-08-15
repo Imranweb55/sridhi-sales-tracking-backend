@@ -29,6 +29,12 @@ const CustomerSchema = new mongoose.Schema({
   // invoiceService falls back gracefully when this is empty.
   gstin:           { type: String, trim: true, default: "" },
 
+  // NEW — manually entered by the admin (Customer detail page). Used by
+  // the Daily Invoice feature so the future WhatsApp automation knows
+  // exactly which group a customer's invoice/no-order message goes to.
+  // Never auto-derived — admin copies the exact WhatsApp group name.
+  whatsappGroupName: { type: String, trim: true, default: "" },
+
   // Manually set by admin on the Customer detail page. Defaults to
   // "irregular" for every newly-discovered customer. The daily / monthly
   // "kg sold per day" figure on the Customers tab and Sales Reports tab

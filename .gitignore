@@ -2,3 +2,9 @@ node_modules/
 .env
 uploads/
 *.log
+
+# Daily invoice PDFs generated locally — see STEP 15 in the daily-invoice
+# feature notes: production should use a persistent volume / object
+# storage instead of local disk. Never commit generated customer PDFs.
+storage/invoices/*
+!storage/invoices/.gitkeep

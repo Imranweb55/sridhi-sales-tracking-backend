@@ -239,6 +239,71 @@ exports.getDriverDeliveries = async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }); }
 };
 
+// exports.getDriverDeliveries = async (req, res) => {
+//   try {
+//     const { date, section } = req.query;
+
+//     console.log("\n========== DRIVER DELIVERY DEBUG ==========");
+//     console.log("Driver ID:", req.params.id);
+//     console.log("Date:", date);
+//     console.log("Section:", JSON.stringify(section));
+
+//     // Get all deliveries for this driver on this date
+//     const d = new Date(date);
+//     d.setHours(0, 0, 0, 0);
+
+//     const next = new Date(d);
+//     next.setDate(next.getDate() + 1);
+
+//     const driverDate = await Delivery.find({
+//       driver: req.params.id,
+//       deliveryDate: {
+//         $gte: d,
+//         $lt: next
+//       }
+//     }).select("_id driver deliveryDate section shopName");
+
+//     console.log("DRIVER + DATE COUNT:", driverDate.length);
+
+//     // Show every section value exactly
+//     console.log(
+//       "SECTION VALUES:",
+//       driverDate.map(d => ({
+//         shopName: d.shopName,
+//         section: d.section,
+//         sectionJSON: JSON.stringify(d.section),
+//         type: typeof d.section
+//       }))
+//     );
+
+//     // Test exact section
+//     const deliveryOnly = driverDate.filter(
+//       d => d.section === "delivery"
+//     );
+
+//     console.log(
+//       "JS FILTER section === delivery:",
+//       deliveryOnly.length
+//     );
+
+//     res.json({
+//       deliveries: driverDate,
+//       debug: {
+//         totalForDriverDate: driverDate.length,
+//         deliverySectionCount: deliveryOnly.length,
+//         requestedSection: section
+//       }
+//     });
+
+//   } catch (err) {
+//     console.error("DEBUG ERROR:", err);
+
+//     res.status(500).json({
+//       message: err.message
+//     });
+//   }
+// };
+
 exports.searchShops = async (req, res) => {
   try {
     const q     = req.query.q || "";

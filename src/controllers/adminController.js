@@ -50,18 +50,56 @@ exports.getEmployees = async (req, res) => {
     const employees = await User.find({ role: "employee", isActive: true })
       .select("-password");
 
-    // Add today's / this week's / all-time visit counts to each employee
-    const withCounts = await Promise.all(employees.map(async (emp) => {
-      const [todayVisits, weeklyDone, totalVisits] = await Promise.all([
-        Visit.countDocuments({ employee: emp._id, createdAt: { $gte: today, $lt: tomorrow } }),
-        Visit.countDocuments({ employee: emp._id, createdAt: { $gte: weekStart } }),
-        Visit.countDocuments({ employee: emp._id }),
-      ]);
-      return { ...emp.toObject(), todayVisits, weeklyDone, totalVisits };
-    }));
+    // FIX (root cause): the old code ran Promise.all() INSIDE .map(), firing
+    // 3 concurrent countDocuments() calls PER EMPLOYEE — e.g. 20 employees =
+    // 60 simultaneous connections opened against MongoDB in one instant.
+    // On an Atlas M0 (free tier) cluster this connection/operation burst is
+    // exactly what produces "connection X to ...:27017 timed out" errors —
+    // it's a query-storm problem, not a network/whitelist problem.
+    //
+    // Fix: group ALL employees' visits in 3 aggregate() calls TOTAL — no
+    // matter how many employees exist, MongoDB is asked exactly 3 questions
+    // instead of 3×N. This is both correct and dramatically lighter on the
+    // cluster's connection pool.
+    const [todayAgg, weekAgg, totalAgg] = await Promise.all([
+      Visit.aggregate([
+        { $match: { createdAt: { $gte: today, $lt: tomorrow } } },
+        { $group: { _id: "$employee", count: { $sum: 1 } } },
+      ]),
+      Visit.aggregate([
+        { $match: { createdAt: { $gte: weekStart } } },
+        { $group: { _id: "$employee", count: { $sum: 1 } } },
+      ]),
+      Visit.aggregate([
+        { $group: { _id: "$employee", count: { $sum: 1 } } },
+      ]),
+    ]);
+
+    // Turn each aggregate result into a quick lookup map: employeeId -> count
+    const toMap = (agg) => {
+      const m = new Map();
+      agg.forEach(r => { if (r._id) m.set(r._id.toString(), r.count); });
+      return m;
+    };
+    const todayMap = toMap(todayAgg);
+    const weekMap  = toMap(weekAgg);
+    const totalMap = toMap(totalAgg);
+
+    const withCounts = employees.map((emp) => {
+      const id = emp._id.toString();
+      return {
+        ...emp.toObject(),
+        todayVisits: todayMap.get(id) || 0,
+        weeklyDone:  weekMap.get(id)  || 0,
+        totalVisits: totalMap.get(id) || 0,
+      };
+    });
 
     res.json({ employees: withCounts });
   } catch (err) {
+    // FIX: log the full stack trace, not just err.message, so Render logs
+    // show exactly where and why this failed.
+    console.error("❌ getEmployees failed:", err);
     res.status(500).json({ message: err.message });
   }
 };

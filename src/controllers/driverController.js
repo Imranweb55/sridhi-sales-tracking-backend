@@ -7,6 +7,23 @@ const Delivery = require("../models/Delivery");
 
 const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 
+// ── UTC day-range helper ─────────────────────────────────────
+// deliveryDate is stored as UTC midnight (e.g. "2026-08-16" -> saved as
+// 2026-08-16T00:00:00.000Z). The old code did:
+//   const d = new Date(dateString); d.setHours(0,0,0,0);
+// `new Date("2026-08-16")` parses as UTC midnight, but `.setHours(0,0,0,0)`
+// then resets it to LOCAL midnight for that same instant — if the server's
+// timezone isn't UTC+0, that silently shifts the day backward or forward,
+// so the query range no longer matches what was actually saved. This
+// helper always builds the [start, end) range from the UTC calendar date,
+// no matter what timezone the Node process is running in.
+function utcDayRange(dateInput) {
+  const base = dateInput ? new Date(dateInput) : new Date();
+  const start = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), base.getUTCDate()));
+  const end = new Date(start); end.setUTCDate(end.getUTCDate() + 1);
+  return { start, end };
+}
+
 // Server-side price/GST recalculation — never trusts numbers sent from the
 // browser. Re-derives subtotal/GST/totalAmount from quantity + pricePerKg
 // every time, so a tampered or stale frontend calculation can never be saved.
@@ -82,11 +99,10 @@ exports.getMe = async (req, res) => {
 // ── TODAY'S DELIVERIES (section: "delivery" only) ──────────
 exports.getTodayDeliveries = async (req, res) => {
   try {
-    const today = new Date(); today.setHours(0,0,0,0);
-    const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate()+1);
+    const { start, end } = utcDayRange();
     const deliveries = await Delivery.find({
       driver: req.user._id,
-      deliveryDate: { $gte: today, $lt: tomorrow },
+      deliveryDate: { $gte: start, $lt: end },
       section: "delivery", // only main delivery section
     }).sort({ sortOrder: 1, createdAt: 1 });
     const summary = {
@@ -105,11 +121,10 @@ exports.getTodayDeliveries = async (req, res) => {
 // Deliveries driver moved to porter section today
 exports.getPorterDeliveries = async (req, res) => {
   try {
-    const today = new Date(); today.setHours(0,0,0,0);
-    const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate()+1);
+    const { start, end } = utcDayRange();
     const deliveries = await Delivery.find({
       driver: req.user._id,
-      deliveryDate: { $gte: today, $lt: tomorrow },
+      deliveryDate: { $gte: start, $lt: end },
       section: "porter",
     }).sort({ updatedAt: -1 });
     res.json({ deliveries });
@@ -216,9 +231,8 @@ exports.updateDriverRoute = async (req, res) => {
 exports.getAllDeliveries = async (req, res) => {
   try {
     const { date, section } = req.query;
-    const d = date ? new Date(date) : new Date(); d.setHours(0,0,0,0);
-    const next = new Date(d); next.setDate(next.getDate()+1);
-    const filter = { deliveryDate: { $gte: d, $lt: next } };
+    const { start, end } = utcDayRange(date);
+    const filter = { deliveryDate: { $gte: start, $lt: end } };
     if (section) filter.section = section;
     const deliveries = await Delivery.find(filter)
       .populate("driver","name employeeId mobile photo")
@@ -230,79 +244,13 @@ exports.getAllDeliveries = async (req, res) => {
 exports.getDriverDeliveries = async (req, res) => {
   try {
     const { date, section } = req.query;
-    const d = date ? new Date(date) : new Date(); d.setHours(0,0,0,0);
-    const next = new Date(d); next.setDate(next.getDate()+1);
-    const filter = { driver: req.params.id, deliveryDate: { $gte: d, $lt: next } };
+    const { start, end } = utcDayRange(date);
+    const filter = { driver: req.params.id, deliveryDate: { $gte: start, $lt: end } };
     if (section) filter.section = section;
     const deliveries = await Delivery.find(filter).sort({ sortOrder: 1, createdAt: 1 });
     res.json({ deliveries });
   } catch (err) { res.status(500).json({ message: err.message }); }
 };
-
-// exports.getDriverDeliveries = async (req, res) => {
-//   try {
-//     const { date, section } = req.query;
-
-//     console.log("\n========== DRIVER DELIVERY DEBUG ==========");
-//     console.log("Driver ID:", req.params.id);
-//     console.log("Date:", date);
-//     console.log("Section:", JSON.stringify(section));
-
-//     // Get all deliveries for this driver on this date
-//     const d = new Date(date);
-//     d.setHours(0, 0, 0, 0);
-
-//     const next = new Date(d);
-//     next.setDate(next.getDate() + 1);
-
-//     const driverDate = await Delivery.find({
-//       driver: req.params.id,
-//       deliveryDate: {
-//         $gte: d,
-//         $lt: next
-//       }
-//     }).select("_id driver deliveryDate section shopName");
-
-//     console.log("DRIVER + DATE COUNT:", driverDate.length);
-
-//     // Show every section value exactly
-//     console.log(
-//       "SECTION VALUES:",
-//       driverDate.map(d => ({
-//         shopName: d.shopName,
-//         section: d.section,
-//         sectionJSON: JSON.stringify(d.section),
-//         type: typeof d.section
-//       }))
-//     );
-
-//     // Test exact section
-//     const deliveryOnly = driverDate.filter(
-//       d => d.section === "delivery"
-//     );
-
-//     console.log(
-//       "JS FILTER section === delivery:",
-//       deliveryOnly.length
-//     );
-
-//     res.json({
-//       deliveries: driverDate,
-//       debug: {
-//         totalForDriverDate: driverDate.length,
-//         deliverySectionCount: deliveryOnly.length,
-//         requestedSection: section
-//       }
-//     });
-
-//   } catch (err) {
-//     console.error("DEBUG ERROR:", err);
-
-//     res.status(500).json({
-//       message: err.message
-//     });
-//   }
-// };
 
 exports.searchShops = async (req, res) => {
   try {

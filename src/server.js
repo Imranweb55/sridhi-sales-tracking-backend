@@ -195,6 +195,27 @@ if (process.env.NODE_ENV === "development") {
 
 /*
  * ============================================================
+ * NO-CACHE HEADERS
+ * ============================================================
+ * FIX: nothing in this backend was setting Cache-Control on API
+ * responses. On Vercel (confirmed above — VERCEL_ORIGIN is explicitly
+ * allowed in CORS), GET API responses without an explicit no-store
+ * directive can get cached at the edge/CDN layer. That's exactly why a
+ * newly-assigned delivery (or its GST fields) wouldn't show up for the
+ * admin dashboard or the driver app until a manual page refresh forced a
+ * fresh request past the cache. This forces every response from this
+ * API to be treated as never-cacheable, at the HTTP-header level only —
+ * it doesn't change what any endpoint computes or returns.
+ */
+app.use((req, res, next) => {
+  res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  res.set("Pragma", "no-cache");
+  res.set("Expires", "0");
+  next();
+});
+
+/*
+ * ============================================================
  * ROUTES
  * ============================================================
  */

@@ -4,23 +4,26 @@
 const jwt      = require("jsonwebtoken");
 const User     = require("../models/User");
 const Delivery = require("../models/Delivery");
+const customerController = require("./customerController");
 
 const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 
-// ── UTC day-range helper ─────────────────────────────────────
-// deliveryDate is stored as UTC midnight (e.g. "2026-08-16" -> saved as
-// 2026-08-16T00:00:00.000Z). The old code did:
-//   const d = new Date(dateString); d.setHours(0,0,0,0);
-// `new Date("2026-08-16")` parses as UTC midnight, but `.setHours(0,0,0,0)`
-// then resets it to LOCAL midnight for that same instant — if the server's
-// timezone isn't UTC+0, that silently shifts the day backward or forward,
-// so the query range no longer matches what was actually saved. This
-// helper always builds the [start, end) range from the UTC calendar date,
-// no matter what timezone the Node process is running in.
-function utcDayRange(dateInput) {
-  const base = dateInput ? new Date(dateInput) : new Date();
+// FIX: build the [start, end) day boundary purely from the UTC calendar
+// date, completely independent of the server process's local timezone
+// (TZ env var). The old pattern — `new Date(dateStr); d.setHours(0,0,0,0)`
+// — computes midnight in the SERVER's local time, but deliveries are
+// STORED as `new Date(dateStr)`, i.e. always UTC midnight for that date,
+// with zero local-timezone involvement. If the deployed server's TZ isn't
+// UTC, those two calculations drift apart and a day's records can fall
+// outside the query's boundary — which is exactly why switching the date
+// filter to a previous day sometimes showed "no deliveries" even though
+// they existed in the DB. Using Date.UTC(...) on both sides removes that
+// mismatch entirely, regardless of what timezone the server happens to run in.
+function dayRangeUTC(dateStr) {
+  const base = dateStr ? new Date(dateStr) : new Date();
   const start = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), base.getUTCDate()));
-  const end = new Date(start); end.setUTCDate(end.getUTCDate() + 1);
+  const end = new Date(start);
+  end.setUTCDate(end.getUTCDate() + 1);
   return { start, end };
 }
 
@@ -99,10 +102,10 @@ exports.getMe = async (req, res) => {
 // ── TODAY'S DELIVERIES (section: "delivery" only) ──────────
 exports.getTodayDeliveries = async (req, res) => {
   try {
-    const { start, end } = utcDayRange();
+    const { start: today, end: tomorrow } = dayRangeUTC();
     const deliveries = await Delivery.find({
       driver: req.user._id,
-      deliveryDate: { $gte: start, $lt: end },
+      deliveryDate: { $gte: today, $lt: tomorrow },
       section: "delivery", // only main delivery section
     }).sort({ sortOrder: 1, createdAt: 1 });
     const summary = {
@@ -121,10 +124,10 @@ exports.getTodayDeliveries = async (req, res) => {
 // Deliveries driver moved to porter section today
 exports.getPorterDeliveries = async (req, res) => {
   try {
-    const { start, end } = utcDayRange();
+    const { start: today, end: tomorrow } = dayRangeUTC();
     const deliveries = await Delivery.find({
       driver: req.user._id,
-      deliveryDate: { $gte: start, $lt: end },
+      deliveryDate: { $gte: today, $lt: tomorrow },
       section: "porter",
     }).sort({ updatedAt: -1 });
     res.json({ deliveries });
@@ -231,8 +234,8 @@ exports.updateDriverRoute = async (req, res) => {
 exports.getAllDeliveries = async (req, res) => {
   try {
     const { date, section } = req.query;
-    const { start, end } = utcDayRange(date);
-    const filter = { deliveryDate: { $gte: start, $lt: end } };
+    const { start: d, end: next } = dayRangeUTC(date);
+    const filter = { deliveryDate: { $gte: d, $lt: next } };
     if (section) filter.section = section;
     const deliveries = await Delivery.find(filter)
       .populate("driver","name employeeId mobile photo")
@@ -244,8 +247,8 @@ exports.getAllDeliveries = async (req, res) => {
 exports.getDriverDeliveries = async (req, res) => {
   try {
     const { date, section } = req.query;
-    const { start, end } = utcDayRange(date);
-    const filter = { driver: req.params.id, deliveryDate: { $gte: start, $lt: end } };
+    const { start: d, end: next } = dayRangeUTC(date);
+    const filter = { driver: req.params.id, deliveryDate: { $gte: d, $lt: next } };
     if (section) filter.section = section;
     const deliveries = await Delivery.find(filter).sort({ sortOrder: 1, createdAt: 1 });
     res.json({ deliveries });
@@ -277,6 +280,24 @@ exports.createDelivery = async (req, res) => {
       ...pricing, // server-recomputed quantity/pricePerKg/subtotal/gst*/totalAmount always win
       deliveryDate: req.body.deliveryDate ? new Date(req.body.deliveryDate) : new Date(),
     });
+    // FIX: Customer.js's own comments describe this exact call as required
+    // ("A Customer record is created automatically the first time a
+    // delivery is added for a given phone number... called from
+    // driverController.createDelivery") and customerController already
+    // has a fully-built upsertFromDelivery for it — it just was never
+    // actually wired in here. That's why manually-typed new customers
+    // (not picked from the autocomplete, so no `customer` id) never
+    // showed up on the Customers tab, for any phone number. Matches on
+    // phone: creates a new Customer if the phone is new, or just adds
+    // this order's kg/amount onto the existing one if it already exists
+    // — so a customer picked from the autocomplete is never duplicated.
+    // Wrapped so a Customer-tracking failure can never fail the delivery
+    // save itself (matches the helper's own doc comment).
+    try {
+      await customerController.upsertFromDelivery(delivery);
+    } catch (custErr) {
+      console.error("upsertFromDelivery failed:", custErr.message);
+    }
     res.status(201).json({ delivery });
   } catch (err) {
     res.status(err.statusCode || 400).json({ message: err.message });

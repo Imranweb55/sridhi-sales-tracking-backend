@@ -20,6 +20,37 @@ function assertValidDate(businessDate) {
   }
 }
 
+// sanitizeForFilename() — makes a WhatsApp group name / customer name safe
+// to use inside a file name: strips anything that isn't a letter, digit,
+// or existing separator, and collapses runs of separators into a single
+// underscore. Needed so the Python WhatsApp-automation script can reliably
+// search for a file by group name (no spaces, parentheses, slashes, etc.
+// that would break a filename or a shell/Selenium search).
+function sanitizeForFilename(str) {
+  return String(str || "")
+    .trim()
+    .replace(/[^a-zA-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+// buildDailyInvoiceFileName() — STEP: WhatsApp-group-aware file naming.
+// Format: "<WhatsAppGroupName>_<CustomerName>_<businessDate>.pdf" so the
+// Python automation can open the correct WhatsApp group by searching for
+// the group name at the start of the file, while the customer name keeps
+// files unique when several customers share the same group. Falls back to
+// just "<CustomerName>_<businessDate>.pdf" when no WhatsApp group name has
+// been set yet for that customer (admin sets this on the Customer detail
+// page — see Customer.whatsappGroupName).
+function buildDailyInvoiceFileName(customer, businessDate) {
+  const namePart = sanitizeForFilename(customer.shopName) || String(customer._id);
+  const groupPart = sanitizeForFilename(customer.whatsappGroupName);
+  if (groupPart && groupPart !== namePart) {
+    // return `${groupPart}_${namePart}_${businessDate}.pdf`;
+    return `${groupPart}_${businessDate}.pdf`;
+  }
+  return `${groupPart}_${businessDate}.pdf`;
+}
+
 // getTodaysOrders() — STEP 2. A customer "took an order" on businessDate
 // if they have a COMPLETED delivery whose deliveryDate falls in that IST
 // calendar day. We deliberately gate on status "completed" — that's the
@@ -129,17 +160,21 @@ async function generateDailyInvoices(businessDate) {
 
     try {
       // REUSE the existing invoice engine exactly as the per-delivery
-      // Download Invoice button does — same PDF design, same GST/no-GST
-      // logic, same invoice numbering sequence.
-      const { buffer, invoiceNo } = await generateInvoicePdf(order._id, "without-gst");
-      const pdfFileName = `${c._id}_${businessDate}.pdf`;
+      // Download Invoice button does — same PDF design, same invoice
+      // numbering sequence. GST is decided by whatever the admin set on
+      // the "Assign Delivery" form (delivery.gstEnabled) — not hardcoded —
+      // so a delivery assigned with the GST toggle ON gets a with-GST PDF
+      // here too, matching the per-delivery Download Invoice behaviour.
+      const invoiceType = order.gstEnabled ? "with-gst" : "without-gst";
+      const { buffer, invoiceNo } = await generateInvoicePdf(order._id, invoiceType);
+      const pdfFileName = buildDailyInvoiceFileName(c, businessDate);
       const pdfPath = savePdf(businessDate, pdfFileName, buffer);
 
       await DailyInvoice.findOneAndUpdate(
         { customer: c._id, businessDate },
         {
           customer: c._id, delivery: order._id, businessDate,
-          invoiceType: "without-gst", invoiceNumber: invoiceNo,
+          invoiceType, invoiceNumber: invoiceNo,
           pdfFileName, pdfPath, status: "generated",
           errorMessage: undefined, generatedAt: new Date(),
         },

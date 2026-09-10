@@ -246,6 +246,27 @@ function drawGrandTotalBar(doc, x, y, width, grandTotal) {
   return y + h;
 }
 
+// NEW — Proforma disclaimer note. Shown on every generated PDF (both the
+// per-delivery download and the Daily Invoice / WhatsApp automation PDFs,
+// since both go through this same generateInvoicePdf engine) so whoever
+// reads the PDF understands it is not a final tax invoice. Kept compact
+// (small font, tight padding) so it never pushes the document onto a
+// second page — verified against both the with-GST and without-GST
+// layouts, which is the tightest case.
+const PROFORMA_NOTE_TEXT =
+  "Note: This Proforma Invoice is issued for reference and order confirmation purposes only. It is not a final tax invoice or proof of sale. Prices, quantities, taxes, and other details are subject to confirmation before the final invoice is issued.";
+
+function drawProformaNote(doc, x, y, width) {
+  doc.font("NotoSans").fontSize(7.5);
+  const textHeight = doc.heightOfString(PROFORMA_NOTE_TEXT, { width: width - 16 });
+  const boxH = textHeight + 10;
+  doc.rect(x, y, width, boxH).fillColor(NAVY_LIGHT).fill();
+  doc.rect(x, y, width, boxH).lineWidth(0.75).strokeColor(BORDER).stroke();
+  doc.fillColor("#374151").font("NotoSans").fontSize(7.5)
+    .text(PROFORMA_NOTE_TEXT, x + 8, y + 5, { width: width - 16 });
+  return y + boxH;
+}
+
 function drawFooter(doc, x, y, width, grandTotalWords) {
   doc.font("NotoSans").fontSize(9).fillColor("#111827")
     .text("Amount Chargeable (in words)", x, y);
@@ -328,10 +349,13 @@ async function generateInvoicePdf(deliveryId, type) {
 
   doc.font("NotoSans-Bold").fontSize(17).fillColor(NAVY)
     .text(company.name, x, y, { width: nameW });
-  doc.fontSize(17).text(withGst ? "TAX INVOICE" : "INVOICE", x + nameW, y, { width: leftColW - nameW, align: "center" });
+  // Renamed from "INVOICE" / "TAX INVOICE" — this document is a Proforma
+  // Invoice (reference/order-confirmation only), never the final tax
+  // invoice. See PROFORMA_NOTE_TEXT below, printed on every copy.
+  doc.fontSize(17).text(withGst ? "PROFORMA TAX INVOICE" : "PROFORMA INVOICE", x + nameW, y, { width: leftColW - nameW, align: "center" });
 
   const infoRows = [
-    ["Invoice No.", invoiceNo],
+    ["Proforma No.", invoiceNo],
     ["Invoice Date", formatDate(invoiceDate)],
     ["Mode/Terms of Payment", delivery.paymentType ? delivery.paymentType.toUpperCase() : "-"],
     ["Buyer's Order No.", "-"],
@@ -371,7 +395,8 @@ async function generateInvoicePdf(deliveryId, type) {
     grandTotal = totalAmt + totalGst;
   }
 
-  y = drawGrandTotalBar(doc, x, y, w, grandTotal) + 20;
+  y = drawGrandTotalBar(doc, x, y, w, grandTotal) + 12;
+  y = drawProformaNote(doc, x, y, w) + 10;
 
   drawFooter(doc, x, y, w, amountToWords(grandTotal));
 

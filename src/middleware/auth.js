@@ -68,3 +68,22 @@ exports.protectAny = async (req, res, next) => {
 
   res.status(401).json({ message: "Token invalid or expired" });
 };
+
+// ════════════════════════════════════════════════════════════
+// NEW BELOW — nothing above this line was changed.
+// Feature: WhatsApp Automation local agent auth.
+// ════════════════════════════════════════════════════════════
+
+// NEW: Protect routes only the local WhatsApp-sending agent (running on
+// the admin's own PC, whatsapp_agent.py) may call. Uses a static shared
+// key from an env var instead of a JWT, because the agent runs
+// unattended in the background — it never has a logged-in browser
+// session. This is intentionally separate from protect/protectAdmin so
+// the existing admin/driver login flows are never touched.
+exports.protectAgent = (req, res, next) => {
+  const key = req.headers["x-agent-key"];
+  if (!key || key !== process.env.WHATSAPP_AGENT_KEY) {
+    return res.status(401).json({ message: "Invalid or missing agent key" });
+  }
+  next();
+};

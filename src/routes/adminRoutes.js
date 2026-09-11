@@ -12,6 +12,7 @@ const customerController   = require("../controllers/customerController");
 const reportController     = require("../controllers/reportController");
 const dailyOrderSheetController = require("../controllers/dailyOrderSheetController");
 const dailyInvoiceController = require("../controllers/dailyInvoiceController");
+const whatsappAdminController = require("../controllers/whatsappAdminController");
 
 router.post("/auth/login",  adminController.adminLogin);
 router.get( "/auth/me",     protectAdmin, adminController.getAdminMe);
@@ -67,5 +68,13 @@ router.get("/daily-order-sheet",     protectAdmin, dailyOrderSheetController.dow
 router.get("/invoices/daily",              protectAdmin, dailyInvoiceController.getDailyStatus);
 router.post("/invoices/daily/generate",    protectAdmin, dailyInvoiceController.generateDaily);
 router.get("/invoices/daily/:id/download", protectAdmin, dailyInvoiceController.downloadDailyInvoice);
+
+// ── Feature 6: WhatsApp Automation (admin dashboard trigger + status) ──
+// The local agent's own endpoints live separately in whatsappAgentRoutes.js,
+// mounted at /api/agent/whatsapp — these here are only for the browser.
+router.get("/whatsapp/preview",  protectAdmin, whatsappAdminController.getSendPreview);
+router.post("/whatsapp/start",   protectAdmin, whatsappAdminController.startAutomation);
+router.get("/whatsapp/latest",   protectAdmin, whatsappAdminController.getLatestRun);
+router.get("/whatsapp/logs",     protectAdmin, whatsappAdminController.getRunHistory);
 
 module.exports = router;

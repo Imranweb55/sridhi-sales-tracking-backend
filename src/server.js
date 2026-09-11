@@ -241,6 +241,14 @@ app.use(
   require("./routes/invoiceRoutes")
 );
 
+// WhatsApp Automation agent (local PC sender) - NEW BACKEND FEATURE
+// Completely separate mount from /api/admin, protected by its own
+// protectAgent key (see middleware/auth.js) instead of admin JWT auth.
+app.use(
+  "/api/agent/whatsapp",
+  require("./routes/whatsappAgentRoutes")
+);
+
 /*
  * ============================================================
  * HEALTH CHECK

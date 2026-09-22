@@ -41,6 +41,14 @@ const CustomerSchema = new mongoose.Schema({
   // only counts kg from customers tagged "regular".
   tag:             { type: String, enum: ["regular", "irregular"], default: "irregular" },
 
+  // NEW — Feature: Distributors module. When a customer is handed over
+  // to a zone distributor (feature #2/#3), this points at that
+  // Distributor. Left blank/undefined for every customer who is still
+  // served directly — nothing else in the app reads this field, so
+  // existing behaviour is 100% unchanged until the admin actually
+  // assigns someone from the new "All Distributors" page.
+  assignedDistributor: { type: mongoose.Schema.Types.ObjectId, ref: "Distributor" },
+
   totalKg:         { type: Number, default: 0 },   // running total across all deliveries
   totalOrders:     { type: Number, default: 0 },
   totalAmount:     { type: Number, default: 0 },

@@ -241,12 +241,22 @@ app.use(
   require("./routes/invoiceRoutes")
 );
 
-// WhatsApp Automation agent (local PC sender) - NEW BACKEND FEATURE
-// Completely separate mount from /api/admin, protected by its own
-// protectAgent key (see middleware/auth.js) instead of admin JWT auth.
+// ════════════════════════════════════════════════════════════
+// NEW BELOW — Feature: Distributors module (Admin sidebar "Distributors"
+// tab + Distributors-PWA-App). Two brand-new mount points, own auth
+// (protectDistributor / DISTRIBUTOR_JWT_SECRET), own models
+// (Distributor, Zone, BatterRequest). /api/driver, /api/auth and every
+// existing route above are completely untouched — the live Android app
+// and its APIs keep working exactly as before.
+// ════════════════════════════════════════════════════════════
 app.use(
-  "/api/agent/whatsapp",
-  require("./routes/whatsappAgentRoutes")
+  "/api/distributors",
+  require("./routes/distributorRoutes")
+);
+
+app.use(
+  "/api/batter-requests",
+  require("./routes/batterRequestRoutes")
 );
 
 /*

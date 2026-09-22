@@ -5,6 +5,7 @@
 const jwt  = require("jsonwebtoken");
 const User  = require("../models/User");
 const Admin = require("../models/Admin");
+const Distributor = require("../models/Distributor"); // NEW — Distributors module
 
 // Protect employee routes (PWA)
 exports.protect = async (req, res, next) => {
@@ -71,19 +72,26 @@ exports.protectAny = async (req, res, next) => {
 
 // ════════════════════════════════════════════════════════════
 // NEW BELOW — nothing above this line was changed.
-// Feature: WhatsApp Automation local agent auth.
+// Feature: Distributors module (Distributors-PWA-App login).
+// Uses its OWN secret (DISTRIBUTOR_JWT_SECRET) and its OWN model
+// (Distributor) so it can never collide with the existing driver
+// (`protect` / User / JWT_SECRET) or admin (`protectAdmin` / Admin /
+// ADMIN_JWT_SECRET) auth — the live mobile app is completely untouched.
 // ════════════════════════════════════════════════════════════
+exports.protectDistributor = async (req, res, next) => {
+  try {
+    let token;
+    if (req.headers.authorization?.startsWith("Bearer")) {
+      token = req.headers.authorization.split(" ")[1];
+    }
+    if (!token) return res.status(401).json({ message: "Not authorized, no token" });
 
-// NEW: Protect routes only the local WhatsApp-sending agent (running on
-// the admin's own PC, whatsapp_agent.py) may call. Uses a static shared
-// key from an env var instead of a JWT, because the agent runs
-// unattended in the background — it never has a logged-in browser
-// session. This is intentionally separate from protect/protectAdmin so
-// the existing admin/driver login flows are never touched.
-exports.protectAgent = (req, res, next) => {
-  const key = req.headers["x-agent-key"];
-  if (!key || key !== process.env.WHATSAPP_AGENT_KEY) {
-    return res.status(401).json({ message: "Invalid or missing agent key" });
+    const decoded = jwt.verify(token, process.env.DISTRIBUTOR_JWT_SECRET);
+    req.distributor = await Distributor.findById(decoded.id);
+    if (!req.distributor) return res.status(401).json({ message: "Distributor not found" });
+
+    next();
+  } catch {
+    res.status(401).json({ message: "Token invalid or expired" });
   }
-  next();
 };

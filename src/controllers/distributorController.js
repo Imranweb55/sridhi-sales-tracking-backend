@@ -10,6 +10,7 @@ const Distributor = require("../models/Distributor");
 const Zone = require("../models/Zone");
 const Customer = require("../models/Customer");
 const generateDistributorId = require("../utils/generateDistributorId");
+const generateRandomPassword = require("../utils/generateRandomPassword");
 const { generateDistributorToken } = require("../utils/generateToken");
 
 /* ══════════════════════════ ZONES (admin) ══════════════════════════ */
@@ -76,22 +77,24 @@ exports.getDistributorById = async (req, res) => {
 };
 
 // POST /api/distributors/admin  → Add Distributor tab
-// Auto-generates employeeId + password (shown once to the admin so it can
-// be shared with the distributor for their PWA login) exactly the way
-// driverController.createDriver does it for drivers.
+// CHANGE (real-time workflow) — Login ID is now the distributor's own
+// PHONE NUMBER (easy for them to remember), and the password is a real
+// randomly-generated one (no more predictable "<id>@123" pattern). Both
+// are still returned once in loginCredentials, exactly as before, so the
+// admin can copy them and hand them to the distributor.
 exports.createDistributor = async (req, res) => {
   try {
-    const { name, phone, address, zone, fridgeLatitude, fridgeLongitude, fridgeAddress, password } = req.body;
+    const { name, phone, address, areaCovered, zone, fridgeLatitude, fridgeLongitude, fridgeAddress, password } = req.body;
     if (!name || !phone) return res.status(400).json({ message: "Name and phone are required." });
 
-    const count = await Distributor.countDocuments();
-    const employeeId = generateDistributorId(name, count);
-    const finalPassword = password && password.length >= 6 ? password : `${employeeId}@123`;
+    const employeeId = phone.trim(); // NEW — login ID is the phone number itself
+    const finalPassword = password && password.length >= 6 ? password : generateRandomPassword(8);
 
     const distributor = await Distributor.create({
       name: name.trim(),
       phone: phone.trim(),
       address: address || "",
+      areaCovered: areaCovered || "", // NEW
       zone: zone || undefined,
       fridgeLocation: {
         latitude: fridgeLatitude,
@@ -118,11 +121,12 @@ exports.createDistributor = async (req, res) => {
 // PUT /api/distributors/admin/:id
 exports.updateDistributor = async (req, res) => {
   try {
-    const { name, phone, address, zone, fridgeLatitude, fridgeLongitude, fridgeAddress, isActive } = req.body;
+    const { name, phone, address, areaCovered, zone, fridgeLatitude, fridgeLongitude, fridgeAddress, isActive } = req.body;
     const update = {};
     if (name !== undefined) update.name = name;
     if (phone !== undefined) update.phone = phone;
     if (address !== undefined) update.address = address;
+    if (areaCovered !== undefined) update.areaCovered = areaCovered;
     if (zone !== undefined) update.zone = zone || null;
     if (isActive !== undefined) update.isActive = isActive;
     if (fridgeLatitude !== undefined) update["fridgeLocation.latitude"] = fridgeLatitude;
@@ -228,4 +232,33 @@ exports.getMyCustomers = async (req, res) => {
     const customers = await Customer.find({ assignedDistributor: req.distributor._id }).sort({ shopName: 1 });
     res.json({ customers });
   } catch (err) { res.status(500).json({ message: err.message }); }
+};
+
+// NEW — POST /api/distributors/my-customers  (protectDistributor)
+// Feature #4: "customers unne bi add karlija app se bi" — a distributor
+// can add a new shop directly from the PWA, not just wait for the admin
+// to hand one over. The customer is created and auto-assigned to this
+// distributor. Reuses the exact same Customer model the admin dashboard
+// already uses — nothing about the Customer schema or the admin's own
+// customer screens changes.
+exports.createMyCustomer = async (req, res) => {
+  try {
+    const { shopName, ownerName, phone, address } = req.body;
+    if (!shopName || !phone) {
+      return res.status(400).json({ message: "Shop name and phone are required." });
+    }
+
+    const customer = await Customer.create({
+      shopName: shopName.trim(),
+      ownerName: ownerName || "",
+      phone: phone.trim(),
+      address: address || "",
+      assignedDistributor: req.distributor._id,
+    });
+
+    res.status(201).json({ customer });
+  } catch (err) {
+    if (err.code === 11000) return res.status(400).json({ message: "A customer with this phone number already exists." });
+    res.status(500).json({ message: err.message });
+  }
 };

@@ -19,6 +19,13 @@ const DistributorSchema = new mongoose.Schema(
     phone: { type: String, required: true, trim: true },
     address: { type: String, trim: true, default: "" },
 
+    // NEW (additive) — Feature: real-time distributor workflow. The area/
+    // neighbourhood this distributor covers, captured as free text on the
+    // Add Distributor form (separate from the map-picked fridge location
+    // below, and separate from "zone" which groups distributors on the
+    // Distributors Map).
+    areaCovered: { type: String, trim: true, default: "" },
+
     // Login credentials for the Distributors-PWA-App
     employeeId: { type: String, required: true, unique: true, trim: true },
     password: { type: String, required: true, select: false },

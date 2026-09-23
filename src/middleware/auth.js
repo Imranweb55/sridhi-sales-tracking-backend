@@ -95,3 +95,32 @@ exports.protectDistributor = async (req, res, next) => {
     res.status(401).json({ message: "Token invalid or expired" });
   }
 };
+
+// ════════════════════════════════════════════════════════════
+// NEW BELOW — nothing above this line was changed.
+// Feature: real-time distributor workflow. A few endpoints (the Product
+// rate catalog) need to be readable by BOTH an admin and a distributor,
+// same idea as protectAny above but for these two token types instead of
+// User/Admin.
+// ════════════════════════════════════════════════════════════
+exports.protectAdminOrDistributor = async (req, res, next) => {
+  let token;
+  if (req.headers.authorization?.startsWith("Bearer")) {
+    token = req.headers.authorization.split(" ")[1];
+  }
+  if (!token) return res.status(401).json({ message: "Not authorized, no token" });
+
+  try {
+    const decoded = jwt.verify(token, process.env.ADMIN_JWT_SECRET);
+    const admin = await Admin.findById(decoded.id);
+    if (admin) { req.admin = admin; return next(); }
+  } catch { /* fall through to try distributor token */ }
+
+  try {
+    const decoded = jwt.verify(token, process.env.DISTRIBUTOR_JWT_SECRET);
+    const distributor = await Distributor.findById(decoded.id);
+    if (distributor) { req.distributor = distributor; return next(); }
+  } catch { /* fall through */ }
+
+  res.status(401).json({ message: "Token invalid or expired" });
+};

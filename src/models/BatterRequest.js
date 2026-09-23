@@ -21,6 +21,21 @@ const BatterRequestSchema = new mongoose.Schema(
     requestedIdlyKg: { type: Number, default: 0 },
     requestedDosaKg: { type: Number, default: 0 },
 
+    // NEW (additive) — Feature: real-time distributor workflow (stock
+    // carry-over). Snapshot of the distributor's currentStockKg at the
+    // moment this request was created, so admin can see exactly how much
+    // was already sitting in the fridge when the request was made.
+    stockAtRequestTime: {
+      idly: { type: Number, default: 0 },
+      dosa: { type: Number, default: 0 },
+    },
+
+    // NEW (additive) — set only when the distributor already had enough
+    // (or partial) stock to cover part of today's need but chose to
+    // still request the full amount anyway — the PWA asks for a reason
+    // in that case, and admin sees it here.
+    carryOverReason: { type: String, trim: true, default: "" },
+
     // Snapshot of the customers/orders behind this request, so the admin
     // can see "today distributor X needs 40kg because these 12 customers
     // ordered" without having to cross-reference separately.

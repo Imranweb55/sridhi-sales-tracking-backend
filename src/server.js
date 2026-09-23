@@ -259,6 +259,21 @@ app.use(
   require("./routes/batterRequestRoutes")
 );
 
+// ════════════════════════════════════════════════════════════
+// NEW BELOW — Feature: real-time distributor workflow (margin tracking,
+// daily deliveries, payment/credit). Two more brand-new mount points,
+// same additive pattern as above — nothing existing is touched.
+// ════════════════════════════════════════════════════════════
+app.use(
+  "/api/products",
+  require("./routes/productRoutes")
+);
+
+app.use(
+  "/api/deliveries",
+  require("./routes/deliveryRoutes")
+);
+
 /*
  * ============================================================
  * HEALTH CHECK

@@ -13,6 +13,7 @@ router.post("/auth/login", ctrl.distributorLogin);
 // ── Distributor app (Distributors-PWA-App) ──
 router.get("/me", protectDistributor, ctrl.getMyProfile);
 router.get("/my-customers", protectDistributor, ctrl.getMyCustomers);
+router.post("/my-customers", protectDistributor, ctrl.createMyCustomer);
 
 // ── Admin — Zones (used by "Distributors Map" tab) ──
 router.get("/admin/zones", protectAdmin, ctrl.getZones);
